@@ -1,0 +1,126 @@
+@import "tailwindcss";
+
+@theme {
+  --font-ui: "Avenir Next", "Segoe UI", sans-serif;
+  --font-caption: Charter, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --color-ink: #f4efe6;
+  --color-source: #c9bfb0;
+  --color-mute: #8e887c;
+  --color-bg: #10110e;
+  --color-line: #34382f;
+  --color-live: #e36b3a;
+  --color-danger: #ffb4a2;
+}
+
+@layer base {
+  html,
+  body,
+  #app {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-ui);
+    text-rendering: optimizeLegibility;
+  }
+
+  button,
+  select,
+  input {
+    font: inherit;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+  }
+
+  button:focus-visible,
+  select:focus-visible,
+  input:focus-visible {
+    outline: 2px solid var(--color-live);
+    outline-offset: 3px;
+  }
+
+  select option {
+    background: var(--color-bg);
+    color: var(--color-ink);
+  }
+}
+
+.caption-source {
+  max-width: 42rem;
+  color: var(--color-source);
+  font-size: calc(clamp(1.15rem, 2.15vw, 1.65rem) * var(--scale, 1));
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+}
+
+.caption-source.is-placeholder,
+.caption-translation.is-placeholder {
+  color: var(--color-mute);
+}
+
+.caption-translation {
+  max-width: 18em;
+  color: var(--color-ink);
+  font-family: var(--font-caption);
+  font-size: calc(clamp(2.7rem, 5.6vw, 5.5rem) * var(--scale, 1));
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.08;
+  text-wrap: pretty;
+}
+
+.caret {
+  display: inline-block;
+  width: 0.45em;
+  height: 0.08em;
+  margin-left: 0.2em;
+  background: var(--color-live);
+  vertical-align: 0.12em;
+  animation: blink 1.05s steps(1) infinite;
+}
+
+.progress > span {
+  display: block;
+  height: 100%;
+  background: var(--color-live);
+}
+
+.progress.is-unknown > span {
+  width: 28%;
+  animation: slide 1.1s ease-in-out infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes slide {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(420%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .caret,
+  .progress.is-unknown > span {
+    animation: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .caption-translation {
+    font-size: calc(clamp(2.05rem, 12vw, 3.1rem) * var(--scale, 1));
+  }
+}
