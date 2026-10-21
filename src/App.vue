@@ -103,7 +103,7 @@ function toggleFullscreen() {
             aria-hidden="true"
           ></span>
           <div class="leading-tight">
-            <p class="text-sm font-semibold tracking-wide">Detta</p>
+            <p class="text-sm font-semibold">LiveWhisper</p>
             <p class="text-xs text-mute">traduzione in aula</p>
           </div>
         </div>

@@ -1,4 +1,4 @@
-# Detta
+# LiveWhisper
 
 Traduzione live per la lezione. Sopra, in piccolo, quello che viene trascritto. Sotto, in grande, la traduzione.
 
