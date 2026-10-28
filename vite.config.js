@@ -1,20 +1,28 @@
 import tailwindcss from '@tailwindcss/vite'
 import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vite'
+import { attachSessionApi } from './server/sessionApi.js'
 import { attachTranslationApi } from './server/translateApi.js'
 
-function translationApiPlugin() {
+function liveWhisperApi() {
   const attach = (server) => {
+    const getPort = () => {
+      const address = server.httpServer?.address?.()
+      return address && typeof address === 'object' ? address.port : 5173
+    }
     attachTranslationApi(server.middlewares)
+    attachSessionApi(server.middlewares, { getPort })
   }
 
   return {
-    name: 'translation-api',
+    name: 'livewhisper-api',
     configureServer: attach,
     configurePreviewServer: attach,
   }
 }
 
 export default defineConfig({
-  plugins: [translationApiPlugin(), vue(), tailwindcss()],
+  server: { host: true },
+  preview: { host: true },
+  plugins: [liveWhisperApi(), vue(), tailwindcss()],
 })

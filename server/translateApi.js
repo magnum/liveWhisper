@@ -1,13 +1,13 @@
 const MEMORY_URL = 'https://api.mymemory.translated.net/get'
 const MEMORY_LIMIT = 420
 
-function sendJson(response, status, payload) {
+export function sendJson(response, status, payload) {
   response.statusCode = status
   response.setHeader('Content-Type', 'application/json; charset=utf-8')
   response.end(JSON.stringify(payload))
 }
 
-function readBody(request) {
+export function readBody(request) {
   return new Promise((resolve, reject) => {
     const chunks = []
     let size = 0
