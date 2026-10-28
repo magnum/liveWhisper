@@ -38,7 +38,7 @@ export function useCaptionPublish(source) {
     timer = window.setTimeout(() => {
       timer = 0
       void send(JSON.stringify(payload()))
-    }, 40)
+    }, 300)
   }
 
   function leave() {
@@ -93,7 +93,9 @@ export function useSharedCaptions() {
     connected: false,
   })
 
-  let stream
+  let stopped = false
+  let since = 0
+  const controller = new AbortController()
 
   function apply(data) {
     captions.listening = Boolean(data.listening)
@@ -104,29 +106,33 @@ export function useSharedCaptions() {
     captions.live = Boolean(data.live)
     captions.waiting = Boolean(data.waiting)
     captions.connected = true
+    const stamp = Number(data.updatedAt)
+    if (Number.isFinite(stamp)) since = stamp
+  }
+
+  async function follow() {
+    while (!stopped) {
+      try {
+        const response = await fetch(`${ENDPOINT}?since=${since}`, { signal: controller.signal })
+        if (!response.ok) throw new Error('session')
+        const data = await response.json()
+        if (!data || typeof data !== 'object') continue
+        apply(data)
+      } catch (error) {
+        if (stopped || (error instanceof DOMException && error.name === 'AbortError')) return
+        captions.connected = false
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+      }
+    }
   }
 
   onMounted(() => {
-    stream = new EventSource(ENDPOINT)
-    stream.onopen = () => {
-      captions.connected = true
-    }
-    stream.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data)
-        if (!data || typeof data !== 'object') return
-        apply(data)
-      } catch {
-        // Un evento illeggibile non deve cancellare l'ultima didascalia buona.
-      }
-    }
-    stream.onerror = () => {
-      captions.connected = stream?.readyState === EventSource.OPEN
-    }
+    void follow()
   })
 
   onBeforeUnmount(() => {
-    stream?.close()
+    stopped = true
+    controller.abort()
   })
 
   return captions

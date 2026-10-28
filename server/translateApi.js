@@ -148,7 +148,7 @@ async function translateDeepL(text, source, target, key) {
   return translated
 }
 
-async function translateBody(body) {
+export async function translateBody(body) {
   const text = String(body.text ?? '').trim()
   if (!text) throw new Error('Nessun testo da tradurre.')
 

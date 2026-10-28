@@ -1,80 +1,49 @@
 import os from 'node:os'
+import { emptySnapshot, snapshotFromBody } from './sessionSnapshot.js'
 import { readBody, sendJson } from './translateApi.js'
 
-const clients = new Set()
+const waiters = new Set()
+let snapshot = emptySnapshot()
+let clock = 0
 
-let snapshot = {
-  listening: false,
-  sourceText: '',
-  translationText: '',
-  sourceId: 'it',
-  targetId: 'en',
-  live: false,
-  waiting: false,
-}
-
-function asCaption(value) {
-  if (typeof value !== 'string') return ''
-  return value.replace(/[\u0000-\u001F]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 4000)
-}
-
-function asLang(value, fallback) {
-  if (typeof value !== 'string') return fallback
-  const clean = value.trim()
-  if (!/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})?$/.test(clean)) return fallback
-  return clean
+function nextStamp() {
+  const now = Date.now()
+  clock = now > clock ? now : clock + 1
+  return clock
 }
 
 function publish(body) {
-  snapshot = {
-    listening: Boolean(body.listening),
-    sourceText: asCaption(body.sourceText),
-    translationText: asCaption(body.translationText),
-    sourceId: asLang(body.sourceId, 'it'),
-    targetId: asLang(body.targetId, 'en'),
-    live: Boolean(body.live),
-    waiting: Boolean(body.waiting),
-  }
-
-  const chunk = `data: ${JSON.stringify(snapshot)}\n\n`
-  for (const client of clients) {
-    try {
-      client.write(chunk)
-    } catch {
-      clients.delete(client)
-    }
-  }
+  snapshot = snapshotFromBody(body, nextStamp())
+  for (const waiter of [...waiters]) waiter()
 }
 
-function openStream(request, response) {
-  response.writeHead(200, {
-    'Content-Type': 'text/event-stream; charset=utf-8',
-    'Cache-Control': 'no-cache, no-transform',
-    Connection: 'keep-alive',
-    'X-Accel-Buffering': 'no',
-  })
-  request.socket?.setTimeout(0)
-  response.write(`retry: 2000\ndata: ${JSON.stringify(snapshot)}\n\n`)
-  clients.add(response)
+function sinceFrom(request) {
+  const raw = request.url ?? ''
+  const query = raw.includes('?') ? raw.slice(raw.indexOf('?')) : ''
+  const since = Number(new URLSearchParams(query).get('since'))
+  return Number.isFinite(since) ? since : 0
+}
 
-  const beat = setInterval(() => {
-    if (response.writableEnded) {
-      close()
-      return
+// Una funzione Netlify non può tenere aperto un flusso per tutta la lezione.
+// Chi ascolta aspetta al massimo qualche secondo, poi ripete la richiesta.
+function waitForNewer(since, response) {
+  if (snapshot.updatedAt > since) return Promise.resolve(true)
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = (open) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      waiters.delete(wake)
+      response.removeListener('close', onClose)
+      resolve(open)
     }
-    response.write(': ping\n\n')
-  }, 15000)
-
-  let closed = false
-  function close() {
-    if (closed) return
-    closed = true
-    clearInterval(beat)
-    clients.delete(response)
-  }
-
-  request.on('close', close)
-  response.on('close', close)
+    const wake = () => finish(true)
+    const onClose = () => finish(false)
+    const timer = setTimeout(() => finish(true), 6000)
+    waiters.add(wake)
+    response.on('close', onClose)
+  })
 }
 
 function rankAddress(item) {
@@ -134,7 +103,9 @@ export function attachSessionApi(middlewares, { getPort }) {
   middlewares.use('/api/session', async (request, response, next) => {
     try {
       if (request.method === 'GET') {
-        openStream(request, response)
+        const open = await waitForNewer(sinceFrom(request), response)
+        if (!open || response.writableEnded) return
+        sendJson(response, 200, snapshot)
         return
       }
       if (request.method !== 'POST') {

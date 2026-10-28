@@ -6,6 +6,7 @@ import output_text from '../components/output_text.vue'
 import { useCaptionPublish } from '../composables/useCaptionChannel'
 import { useLecture } from '../composables/useLecture'
 import { LANGUAGES } from '../lib/languages'
+import { showEnginePicker } from '../lib/translationMode'
 
 const lecture = useLecture()
 useCaptionPublish(lecture)
@@ -160,16 +161,7 @@ function toggleShare() {
 
 async function ensureQr() {
   if (qrSrc.value) return
-  let url = `${window.location.origin}/listen`
-  try {
-    const response = await fetch('/api/listen-url')
-    if (response.ok) {
-      const data = await response.json()
-      if (typeof data.url === 'string' && data.url.endsWith('/listen')) url = data.url
-    }
-  } catch {
-    // Se il server non risponde, il codice usa l'indirizzo di questa pagina.
-  }
+  const url = await resolveListenUrl()
   listenUrl.value = url
   try {
     qrSrc.value = await QRCode.toDataURL(url, {
@@ -181,6 +173,23 @@ async function ensureQr() {
   } catch {
     qrSrc.value = ''
   }
+}
+
+async function resolveListenUrl() {
+  const local = `${window.location.origin}/listen`
+  const host = window.location.hostname
+  const loopback = host === 'localhost' || host === '127.0.0.1' || host === '::1'
+  if (!loopback) return local
+  try {
+    const response = await fetch('/api/listen-url')
+    if (response.ok) {
+      const data = await response.json()
+      if (typeof data.url === 'string' && data.url.endsWith('/listen')) return data.url
+    }
+  } catch {
+    // In produzione il codice usa l'indirizzo pubblico della pagina.
+  }
+  return local
 }
 </script>
 
@@ -257,7 +266,7 @@ async function ensureQr() {
           </select>
         </label>
 
-        <label class="flex items-center gap-2 text-sm text-mute">
+        <label v-if="showEnginePicker" class="flex items-center gap-2 text-sm text-mute">
           <span>Motore</span>
           <select v-model="enginePref" class="bg-transparent text-ink" aria-label="Motore di traduzione">
             <option value="auto">Automatico</option>
@@ -286,7 +295,7 @@ async function ensureQr() {
         <button :class="controlButton" type="button" @click="clean = true">Pulisci schermo</button>
       </div>
 
-      <label v-if="enginePref === 'deepl'" class="mt-3 flex max-w-md flex-col gap-1 text-xs text-mute">
+      <label v-if="showEnginePicker && enginePref === 'deepl'" class="mt-3 flex max-w-md flex-col gap-1 text-xs text-mute">
         Chiave DeepL
         <input
           v-model="deeplKey"
@@ -369,7 +378,7 @@ async function ensureQr() {
         <summary class="cursor-pointer">Come resta veloce</summary>
         <p class="mt-2 max-w-xl leading-relaxed">
           Chrome trascrive mentre parli e aggiorna la riga piccola prima che la frase sia chiusa.
-          Con il motore automatico la traduzione gira sul computer, quindi non aspetta un server.
+          La traduzione gira sul computer, con il traduttore di Chrome, quindi non aspetta un server.
           Whisper è più preciso in un’aula rumorosa, ma lavora a blocchi e aggiunge uno o due secondi.
           Tieni questa scheda in primo piano. Spazio avvia e ferma l’ascolto. Share resta disponibile
           dopo l’avvio e mostra un codice: chi lo inquadra vede solo il testo e la traduzione.

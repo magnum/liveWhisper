@@ -1,5 +1,6 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { findLanguage } from '../lib/languages'
+import { resolveEngine, showEnginePicker } from '../lib/translationMode'
 import { translateOnline } from '../lib/translateOnline'
 
 const STORAGE = {
@@ -14,7 +15,7 @@ const ENGINE_PREFS = ['auto', 'device', 'mymemory', 'deepl']
 
 function readEnginePref() {
   const stored = localStorage.getItem(STORAGE.engine)
-  return ENGINE_PREFS.includes(stored) ? stored : 'auto'
+  return ENGINE_PREFS.includes(stored) ? stored : 'device'
 }
 
 function normalize(value) {
@@ -95,20 +96,22 @@ export function useLecture() {
     if (deviceState.value === 'downloading') {
       const percent =
         downloadProgress.value == null ? '' : ` ${Math.round(downloadProgress.value * 100)}%`
+      if (!showEnginePicker) return `Scarico il modello di traduzione di Chrome${percent}.`
       return `Scarico il modello di traduzione${percent}. Intanto traduco in rete.`
     }
-    if (listening.value && activeEngine.value === 'device') {
+    if (listening.value && chosenEngine() === 'device') {
       return 'In ascolto. Traduzione sul dispositivo, quasi immediata.'
     }
-    if (listening.value && activeEngine.value === 'deepl') return 'In ascolto. Traduzione con DeepL.'
-    if (listening.value && activeEngine.value === 'mymemory') return 'In ascolto. Traduzione in rete.'
+    if (listening.value && chosenEngine() === 'deepl') return 'In ascolto. Traduzione con DeepL.'
+    if (listening.value && chosenEngine() === 'mymemory') return 'In ascolto. Traduzione in rete.'
     if (listening.value) return 'In ascolto.'
-    if (enginePref.value === 'deepl') return 'DeepL è più curato e aggiunge un piccolo ritardo di rete.'
+    if (chosenEngine() === 'deepl') return 'DeepL è più curato e aggiunge un piccolo ritardo di rete.'
     if (deviceState.value === 'ready') return 'Modello pronto sul dispositivo: è il percorso più rapido.'
     if (deviceState.value === 'downloadable') {
       return 'Premi Ascolta: Chrome scarica il modello una volta, poi traduce senza rete.'
     }
-    if (deviceState.value === 'unavailable' && enginePref.value !== 'mymemory') {
+    if (deviceState.value === 'unavailable' && chosenEngine() !== 'mymemory') {
+      if (!showEnginePicker) return 'La traduzione di Chrome non è disponibile in questo browser.'
       return 'Traduzione sul dispositivo non disponibile qui. Userò MyMemory.'
     }
     return 'Premi Ascolta e parla. La frase compare sopra, la traduzione sotto.'
@@ -219,7 +222,8 @@ export function useLecture() {
   }
 
   function primeDevice() {
-    if (enginePref.value === 'mymemory' || enginePref.value === 'deepl') return
+    const engine = chosenEngine()
+    if (engine === 'mymemory' || engine === 'deepl') return
     if (sourceId.value === targetId.value) return
     if (deviceState.value === 'unavailable') return
     if (translator && translatorPair === currentPair()) return
@@ -348,8 +352,9 @@ export function useLecture() {
   }
 
   function draftDelay() {
-    if (enginePref.value === 'deepl') return 420
-    if (enginePref.value === 'mymemory') return 320
+    const engine = chosenEngine()
+    if (engine === 'deepl') return 420
+    if (engine === 'mymemory') return 320
     if (deviceState.value === 'ready') return 80
     return 320
   }
@@ -419,21 +424,38 @@ export function useLecture() {
     history.value = [{ source, translation }, ...history.value].slice(0, 10)
   }
 
+  function chosenEngine() {
+    return resolveEngine(enginePref.value)
+  }
+
   async function runTranslation(text) {
-    switch (enginePref.value) {
+    switch (chosenEngine()) {
       case 'auto':
         return translateAuto(text)
       case 'device':
-        return translateDeviceFirst(text)
+        return showEnginePicker ? translateDeviceFirst(text) : translateWithChrome(text)
       case 'mymemory':
         return translateWithMemory(text)
       case 'deepl':
         return translateWithDeepL(text)
       default: {
-        const unknown = enginePref.value
+        const unknown = chosenEngine()
         throw new Error(`Motore sconosciuto: ${unknown}`)
       }
     }
+  }
+
+  async function translateWithChrome(text) {
+    const local = await translateWithDevice(text)
+    if (local) return local
+    if (
+      deviceState.value === 'downloading' ||
+      deviceState.value === 'downloadable' ||
+      deviceState.value === 'unknown'
+    ) {
+      return ''
+    }
+    throw new Error('La traduzione di Chrome non è disponibile per queste lingue. Apri la pagina in Chrome aggiornato.')
   }
 
   async function translateAuto(text) {
@@ -488,7 +510,7 @@ export function useLecture() {
     const token = ++availabilityToken
     dropTranslator()
 
-    if (sourceId.value === targetId.value || enginePref.value === 'mymemory' || enginePref.value === 'deepl') {
+    if (sourceId.value === targetId.value || chosenEngine() === 'mymemory' || chosenEngine() === 'deepl') {
       deviceState.value = 'unavailable'
       downloadProgress.value = null
       return
@@ -590,9 +612,10 @@ export function useLecture() {
   }
 
   function engineCacheId() {
-    if (enginePref.value === 'deepl') return 'deepl'
-    if (enginePref.value === 'mymemory') return 'mymemory'
-    return deviceState.value === 'ready' ? 'device' : 'mymemory'
+    const engine = chosenEngine()
+    if (engine === 'deepl') return 'deepl'
+    if (engine === 'mymemory') return 'mymemory'
+    return 'device'
   }
 
   return {
